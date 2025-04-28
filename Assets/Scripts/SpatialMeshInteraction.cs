@@ -1,115 +1,102 @@
 using UnityEngine;
 using Microsoft.MixedReality.Toolkit.Input;
+using Microsoft.MixedReality.Toolkit.SpatialAwareness;
 using Microsoft.MixedReality.Toolkit;
+using System.Collections.Generic;
+using Microsoft.MixedReality.Toolkit.Utilities;
 
 public class SpatialMeshInteraction : MonoBehaviour, IMixedRealityPointerHandler
 {
-    private SpatialMeshLoader meshLoader;
     [SerializeField] private Material highlightMaterial;
     private Material defaultMaterial;
     private GameObject lastHitObject;
-
-    // Flag para debug
-    [SerializeField] private bool debugMode = true;
+    private AdvancedSpatialMeshLoader meshLoader;
 
     void Start()
     {
-        // Encontrar o SpatialMeshLoader
-        meshLoader = FindObjectOfType<SpatialMeshLoader>();
+        meshLoader = FindObjectOfType<AdvancedSpatialMeshLoader>();
         if (meshLoader != null)
         {
             defaultMaterial = meshLoader.spatialMeshMaterial;
-            Debug.Log($"SpatialMeshLoader encontrado, material padrão: {(defaultMaterial != null ? defaultMaterial.name : "null")}");
+            Debug.Log("Obtido material do AdvancedSpatialMeshLoader");
         }
         else
         {
-            Debug.LogError("SpatialMeshLoader não encontrado na cena!");
+            // Se não encontrar o loader, tenta obter o material padrão do MRTK
+            IMixedRealitySpatialAwarenessSystem spatialAwarenessSystem = CoreServices.SpatialAwarenessSystem;
+            if (spatialAwarenessSystem != null)
+            {
+                // Cast para a interface correta para acessar GetDataProviders<T>
+                IMixedRealityDataProviderAccess dataProviderAccess = spatialAwarenessSystem as IMixedRealityDataProviderAccess;
+                if (dataProviderAccess != null)
+                {
+                    IReadOnlyList<IMixedRealitySpatialAwarenessMeshObserver> observers =
+                        dataProviderAccess.GetDataProviders<IMixedRealitySpatialAwarenessMeshObserver>();
+
+                    if (observers.Count > 0)
+                    {
+                        // Como não há meshMaterial, usamos um material padrão
+                        defaultMaterial = new Material(Shader.Find("Standard"));
+                        Debug.Log("Criado material padrão para interação com a malha");
+                    }
+                }
+            }
         }
 
-        // Registrar explicitamente para eventos de input
-        CoreServices.InputSystem?.RegisterHandler<IMixedRealityPointerHandler>(this);
+        // Se o material ainda for nulo, criar um material padrão
+        if (defaultMaterial == null)
+        {
+            defaultMaterial = new Material(Shader.Find("Standard"));
+            defaultMaterial.color = Color.gray;
+        }
 
-        if (debugMode)
-            Debug.Log("SpatialMeshInteraction iniciado e registrado para eventos de pointer");
+        // Registrar para eventos de input
+        CoreServices.InputSystem?.RegisterHandler<IMixedRealityPointerHandler>(this);
+        Debug.Log("SpatialMeshInteraction iniciado");
     }
 
     void OnDestroy()
     {
-        // Importante: desregistrar quando o objeto for destruído
         CoreServices.InputSystem?.UnregisterHandler<IMixedRealityPointerHandler>(this);
     }
 
     public void OnPointerDown(MixedRealityPointerEventData eventData)
     {
-        if (debugMode)
-            Debug.Log("OnPointerDown detectado");
-
-        // Verificar se o raycast atingiu algo
-        if (eventData.Pointer.Result == null)
+        if (eventData.Pointer.Result != null)
         {
-            if (debugMode) Debug.Log("Pointer Result é nulo");
-            return;
-        }
+            GameObject hitObject = eventData.Pointer.Result.CurrentPointerTarget;
 
-        GameObject hitObject = eventData.Pointer.Result.CurrentPointerTarget;
-        if (hitObject == null)
-        {
-            if (debugMode) Debug.Log("Não acertou nenhum objeto");
-            return;
-        }
-
-        if (debugMode)
-            Debug.Log($"Hit em objeto: {hitObject.name}, layer: {LayerMask.LayerToName(hitObject.layer)}");
-
-        // Verificar referência do meshLoader e seu objeto
-        if (meshLoader == null || meshLoader.GetSpatialMeshObject() == null)
-        {
-            Debug.LogWarning("MeshLoader ou SpatialMeshObject é nulo!");
-            return;
-        }
-
-        // Verificar se o objeto atingido é parte da malha espacial
-        if (hitObject.transform.IsChildOf(meshLoader.GetSpatialMeshObject().transform))
-        {
-            Debug.Log("Tocou na malha espacial: " + hitObject.name);
-
-            // Restaurar material anterior
-            if (lastHitObject != null && lastHitObject != hitObject)
+            if (hitObject != null)
             {
-                Renderer lastRenderer = lastHitObject.GetComponent<Renderer>();
-                if (lastRenderer != null && defaultMaterial != null)
+                // Verificar se o objeto está na layer de Spatial Awareness
+                if (hitObject.layer == LayerMask.NameToLayer("Spatial Awareness"))
                 {
-                    lastRenderer.material = defaultMaterial;
+                    Debug.Log("Tocou na malha espacial: " + hitObject.name);
+
+                    // Restaurar material anterior
+                    if (lastHitObject != null && lastHitObject != hitObject)
+                    {
+                        Renderer lastRenderer = lastHitObject.GetComponent<Renderer>();
+                        if (lastRenderer != null && defaultMaterial != null)
+                        {
+                            lastRenderer.material = defaultMaterial;
+                        }
+                    }
+
+                    lastHitObject = hitObject;
+
+                    // Aplicar material de destaque
+                    Renderer renderer = hitObject.GetComponent<Renderer>();
+                    if (renderer != null && highlightMaterial != null)
+                    {
+                        renderer.material = highlightMaterial;
+                    }
                 }
             }
-
-            lastHitObject = hitObject;
-
-            // Aplicar material de destaque
-            Renderer currentRenderer = hitObject.GetComponent<Renderer>();
-            if (currentRenderer != null && highlightMaterial != null)
-            {
-                currentRenderer.material = highlightMaterial;
-                Debug.Log($"Material de destaque aplicado a: {hitObject.name}");
-            }
-            else
-            {
-                Debug.LogWarning($"Renderer ou material de destaque é nulo para o objeto: {hitObject.name}");
-            }
-        }
-        else
-        {
-            if (debugMode)
-                Debug.Log($"Objeto {hitObject.name} não é parte da malha espacial");
         }
     }
 
-    public void OnPointerClicked(MixedRealityPointerEventData eventData)
-    {
-        if (debugMode) Debug.Log("OnPointerClicked");
-    }
-
+    public void OnPointerClicked(MixedRealityPointerEventData eventData) { }
     public void OnPointerDragged(MixedRealityPointerEventData eventData) { }
-
     public void OnPointerUp(MixedRealityPointerEventData eventData) { }
 }
