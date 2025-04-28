@@ -1,71 +1,71 @@
-# Spatial Mesh Visualizer
+# Spatial Mesh Visualization in Unity
 
 ## Sobre o Projeto
-Este projeto demonstra como carregar e visualizar malhas espaciais (Spatial Meshes) no Unity utilizando o Mixed Reality Toolkit (MRTK). O aplicativo permite visualizar malhas espaciais pré-mapeadas (arquivos OBJ).
+Este projeto demonstra como carregar e visualizar malhas espaciais (Spatial Meshes) no Unity utilizando arquivos OBJ pré-mapeados e o Mixed Reality Toolkit (MRTK). O aplicativo permite carregar uma malha espacial, configurar colisões físicas adequadas e interagir com a malha.
 
 ## Requisitos Técnicos
 - Unity 2021.3.22f1
-- Mixed Reality Toolkit (MRTK) 2.8.3.0
+- Mixed Reality Toolkit (MRTK) 2.8
 - Universal Windows Platform (para HoloLens)
-- O projeto utiliza Universal Render Pipeline (URP)
 
-## Funcionalidades
-- Carregamento e visualização de malhas espaciais a partir de arquivos OBJ
-- Destaque visual das partes da malha
-
-## Instruções de Instalação
-1. Clone este repositório
-2. Abra o projeto no Unity 2021.3.22f1
-3. Certifique-se de que o MRTK 2.8.3.0 está instalado
-4. Abra a cena principal em `Assets/Scenes/Main.scene`
-
-## Como Usar
-1. Execute o aplicativo no editor ou em um dispositivo HoloLens
-2. A malha espacial será carregada automaticamente na frente da câmera
-3. Navegue pelo ambiente usando os controles de movimento padrão
+## Funcionalidades Implementadas
+- Carregamento de malhas espaciais a partir de arquivos OBJ na pasta Resources
+- Configuração automática de colliders para permitir interação física com a malha
+- Sistema para evitar atravessar paredes da malha espacial
+- Integração com sistema de entrada do MRTK para interação com a malha
+- Destaque visual de partes da malha ao interagir com ela
+- Chão de segurança para evitar queda do personagem
 
 ## Estrutura do Projeto
-- `Assets/Prefabs/` - Contém o prefab da malha espacial
-- `Assets/Materials/` - Materiais utilizados para visualizar a malha
+- `Assets/Resources/SpatialMeshes/` - Arquivos OBJ das malhas espaciais
 - `Assets/Scripts/` - Scripts C# para carregar e interagir com a malha
-- `Assets/SpatialMeshes/` - Arquivos OBJ das malhas espaciais
+- `Assets/Materials/` - Materiais para visualização da malha
 
 ## Scripts Principais
-- `SpatialMeshLoader.cs` - Carrega e gerencia a malha espacial
-- `SpatialMeshInteraction.cs` - Gerencia interações do usuário com a malha [Not working]
-- `MeshInteractionHandler.cs` - Processa eventos de interação em partes específicas da malha
 
-## Resolução de Problemas
-- Se a malha não aparecer no campo de visão inicialmente, tente girar a câmera ou reiniciar a aplicação
+### SpatialMeshLoader.cs
+Responsável por carregar e configurar a malha espacial:
+- Carrega o arquivo OBJ da pasta Resources
+- Configura materiais para visualização
+- Adiciona e configura colliders para interação física
+- Posiciona a malha em frente ao personagem
 
-## Como Adicionar Novos Arquivos OBJ para Teste
+### CollisionLayerManager.cs
+Gerencia as configurações de colisão entre layers:
+- Força colisões entre a layer Spatial e Default (do jogador)
+- Garante que as configurações persistam mesmo com MRTK ativo
 
-### Importando Novos Modelos
-1. Coloque seu arquivo .obj na pasta `Assets/SpatialMeshes/`
-2. No Unity, selecione o arquivo importado
-3. No Inspector, configure:
-   - **Generate Colliders**: Ativado
-   - **Read/Write Enabled**: Ativado
-   - **Mesh Compression**: Baixa ou Média
-   - **Optimize Mesh**: Ativado
-   - **Import Normals**: Calculado
-   - Clique em "Apply" para salvar as configurações
+### SpatialMeshInteraction.cs
+Gerencia interações do usuário com a malha:
+- Detecta quando o usuário aponta/toca na malha
+- Aplica material de destaque às partes selecionadas
+- Integra com o sistema de input do MRTK
 
-### Criando um Prefab
-1. Arraste o modelo importado para a cena
-2. Ajuste posição, rotação e escala conforme necessário
-3. Crie um Empty GameObject e nomeie como "NomeDaSuaMalha_Container"
-4. Arraste o modelo como filho deste container
-5. Arraste o container da hierarquia para a pasta `Assets/Prefabs/`
-6. Isto criará um prefab do seu novo modelo
+## Como Configurar o Projeto
 
-### Usando o Novo Modelo
-1. Selecione o objeto "SpatialMeshManager" na hierarquia
-2. No Inspector, localize o componente "SpatialMeshLoader"
-3. Arraste seu novo prefab para o campo "Spatial Mesh Prefab"
-4. Execute a aplicação para ver o novo modelo carregado
+1. **Configuração Inicial:**
+   - Criar um novo projeto Unity 2021.3.22f1
+   - Instalar o MRTK 2.8 via Package Manager
+   - Configurar XR Plug-in Management para OpenXR ou Windows MR
 
-### Formatos de Arquivo Suportados
-Além de .obj, você pode usar outros formatos compatíveis com Unity:
-- .fbx 
-- .3ds
+2. **Importação de Malhas:**
+   - Criar pasta `Assets/Resources/SpatialMeshes/`
+   - Importar arquivos OBJ para esta pasta
+   - Configurar as importações com "Generate Colliders" e "Read/Write Enabled"
+
+3. **Configuração da Cena:**
+   - Adicionar MRTK à cena usando "Mixed Reality > Toolkit > Add to Scene"
+   - Criar GameObject vazio para "SpatialMeshManager"
+   - Adicionar o script SpatialMeshLoader a este objeto
+   - Criar GameObject vazio para "CollisionManager" 
+   - Adicionar o script CollisionLayerManager a este objeto
+
+4. **Configuração do Script Loader:**
+   - No Inspector do SpatialMeshLoader, definir:
+     - Mesh Object Path: "SpatialMeshes/SeuArquivoOBJ" (sem extensão)
+     - Criar e atribuir material para Spatial Mesh Material
+     - Marcar Display Mesh e Enable Colliders como true
+
+5. **Configuração de Colisão:**
+   - Criar layer "Spatial" nas configurações do projeto
+   - Adicionar CharacterController à câmera principal para física adequada

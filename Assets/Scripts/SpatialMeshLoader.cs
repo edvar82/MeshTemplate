@@ -1,210 +1,228 @@
-using UnityEngine;
-using Microsoft.MixedReality.Toolkit;
 using Microsoft.MixedReality.Toolkit.SpatialAwareness;
-using System.Collections.Generic;
-using Microsoft.MixedReality.Toolkit.Utilities;
+using Microsoft.MixedReality.Toolkit;
+using UnityEngine;
 
 public class SpatialMeshLoader : MonoBehaviour
 {
-    [SerializeField] private GameObject spatialMeshPrefab;
-    [SerializeField] public Material spatialMeshMaterial;
+    [SerializeField]
+    private string meshObjectPath = "SpatialMeshes/SpatialMapping_04_marker_to_right"; // Caminho sem "Assets/Resources/" e sem extensão
 
-    [Header("Configurações de Posicionamento")]
-    [SerializeField] private float distanciaDaCamera = 2f; // Quão longe o objeto ficará da câmera
-    [SerializeField] private Vector3 offset = new Vector3(40f, -0.5f, 0); // Ajuste fino de posição
+    [SerializeField]
+    public Material spatialMeshMaterial; // Material para a malha espacial
 
-    private GameObject spatialMeshInstance;
-    private IMixedRealitySpatialAwarenessSystem spatialAwarenessSystem;
-    private bool useLiveMesh = false;
+    [SerializeField]
+    private bool displayMesh = true; // Controla a visibilidade da malha
+
+    [SerializeField]
+    private bool enableColliders = true; // Controla se os colliders estão habilitados
+
+    private GameObject spatialMeshObject; // Referência ao objeto de malha carregado
 
     void Start()
     {
-        // Obter referência ao sistema de Spatial Awareness do MRTK
-        spatialAwarenessSystem = CoreServices.SpatialAwarenessSystem;
+        // Verificar quais recursos estão disponíveis
+        Object[] assets = Resources.LoadAll("SpatialMeshes");
+        Debug.Log($"Encontrados {assets.Length} recursos na pasta SpatialMeshes:");
 
-        if (useLiveMesh)
+        foreach (Object asset in assets)
         {
-            // Configurar para usar o mapeamento espacial em tempo real
-            ConfigureLiveMeshObserver();
+            Debug.Log($"- {asset.name} (tipo: {asset.GetType().Name})");
         }
-        else
+
+        // Desabilitar o observador automático de spatial mesh (se estiver usando apenas dados carregados)
+        DisableRealTimeMeshObserver();
+
+        // Carregar o mesh do arquivo
+        LoadMeshFromFile();
+    }
+
+    void DisableRealTimeMeshObserver()
+    {
+        // Correção para MRTK 2.8
+        var spatialAwarenessSystem = CoreServices.SpatialAwarenessSystem;
+        if (spatialAwarenessSystem != null)
         {
-            // Carregar o modelo OBJ pré-mapeado
-            LoadSpatialMeshFromPrefab();
+            // Desabilitar observadores para não conflitar com o mesh carregado
+            spatialAwarenessSystem.SuspendObservers();
+            Debug.Log("Observadores de malha espacial do MRTK suspensos");
         }
     }
 
-    private void ConfigureLiveMeshObserver()
+    private void AddSafetyFloor()
     {
-        // Verificar se o sistema está disponível
-        if (spatialAwarenessSystem != null)
+        // Criar um plano grande como chão de segurança
+        GameObject safetyFloor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        safetyFloor.name = "SafetyFloor";
+
+        // Tornar o plano 10x maior que o padrão
+        safetyFloor.transform.localScale = new Vector3(10f, 1f, 10f);
+
+        // Posicionar abaixo da câmera/personagem
+        safetyFloor.transform.position = new Vector3(
+            Camera.main.transform.position.x,
+            Camera.main.transform.position.y - 1.5f, // Posicionar abaixo dos pés
+            Camera.main.transform.position.z);
+
+        // Tornar o chão invisível mas com colisão
+        Renderer renderer = safetyFloor.GetComponent<Renderer>();
+        if (renderer != null)
         {
-            // Usar GetDataProviders em vez de GetObservers (que está obsoleto)
-            var dataProviderAccess = spatialAwarenessSystem as IMixedRealityDataProviderAccess;
-            if (dataProviderAccess != null)
+            renderer.enabled = false; // Invisível
+        }
+
+        // Fazer o chão filho do objeto de malha espacial
+        safetyFloor.transform.parent = spatialMeshObject.transform;
+
+        Debug.Log("Chão de segurança adicionado sob o personagem");
+    }
+
+    void LoadMeshFromFile()
+    {
+        Debug.Log($"Tentando carregar mesh do caminho: {meshObjectPath}");
+
+        // Carregar como GameObject (prefab)
+        GameObject modelPrefab = Resources.Load<GameObject>(meshObjectPath);
+
+        if (modelPrefab != null)
+        {
+            // Se carregou como GameObject, instancie e use
+            spatialMeshObject = Instantiate(modelPrefab);
+            spatialMeshObject.name = "Loaded Spatial Mesh";
+            Debug.Log($"Mesh carregado como prefab GameObject: {modelPrefab.name}");
+
+            // Configurar material e colliders
+            ConfigureMeshProperties(spatialMeshObject);
+
+            // Garantir visibilidade e posicionamento adequado
+            spatialMeshObject.transform.position = Camera.main.transform.position + Camera.main.transform.forward * 2;
+            Debug.Log($"Mesh posicionado em: {spatialMeshObject.transform.position}");
+        }
+        else
+        {
+            // Tentar carregar como Mesh direto
+            Mesh meshAsset = Resources.Load<Mesh>(meshObjectPath);
+
+            if (meshAsset != null)
             {
-                IReadOnlyList<IMixedRealitySpatialAwarenessMeshObserver> observers =
-                    dataProviderAccess.GetDataProviders<IMixedRealitySpatialAwarenessMeshObserver>();
+                // Se carregou como Mesh, crie um GameObject para ele
+                spatialMeshObject = new GameObject("Loaded Spatial Mesh");
 
-                if (observers.Count > 0)
-                {
-                    // Configurar o observador com parâmetros personalizados
-                    var observer = observers[0];
-                    observer.DisplayOption = SpatialAwarenessMeshDisplayOptions.Visible;
+                MeshFilter meshFilter = spatialMeshObject.AddComponent<MeshFilter>();
+                meshFilter.sharedMesh = meshAsset;
 
-                    // Configurar o material diretamente no observador
-                    if (observer is BaseSpatialMeshObserver meshObserver)
-                    {
-                        meshObserver.VisibleMaterial = spatialMeshMaterial;
-                    }
+                MeshRenderer meshRenderer = spatialMeshObject.AddComponent<MeshRenderer>();
+                meshRenderer.sharedMaterial = spatialMeshMaterial != null ?
+                    spatialMeshMaterial : new Material(Shader.Find("Standard"));
 
-                    // Resumir a observação se foi suspensa
-                    if (!observer.IsRunning)
-                    {
-                        observer.Resume();
-                    }
+                // Adicionar collider
+                MeshCollider collider = spatialMeshObject.AddComponent<MeshCollider>();
+                collider.sharedMesh = meshAsset;
+                collider.enabled = enableColliders;
 
-                    Debug.Log("Iniciando observação de malhas espaciais em tempo real");
-                }
-                else
-                {
-                    Debug.LogError("Nenhum observador de malha espacial encontrado");
-                }
+                // Posicionar
+                spatialMeshObject.transform.position = Camera.main.transform.position + Camera.main.transform.forward * 2;
+                Debug.Log($"Mesh carregado como asset de Mesh e posicionado em: {spatialMeshObject.transform.position}");
             }
             else
             {
-                Debug.LogError("Sistema de Spatial Awareness não implementa IMixedRealityDataProviderAccess");
+                Debug.LogError($"Não foi possível carregar o mesh espacial do caminho: {meshObjectPath}");
             }
         }
-        else
-        {
-            Debug.LogError("Sistema de Spatial Awareness não encontrado");
-        }
+        AddSafetyFloor();
     }
 
-    private void LoadSpatialMeshFromPrefab()
+    void ConfigureMeshProperties(GameObject meshObj)
     {
-        if (spatialMeshPrefab != null)
+        // Obter todos os MeshRenderer no objeto e seus filhos
+        MeshRenderer[] renderers = meshObj.GetComponentsInChildren<MeshRenderer>();
+        foreach (MeshRenderer renderer in renderers)
         {
-            // Obter a câmera principal
-            Camera mainCamera = Camera.main;
-            if (mainCamera == null)
+            // Configurar visibilidade
+            renderer.enabled = displayMesh;
+
+            // Aplicar material se fornecido
+            if (spatialMeshMaterial != null)
             {
-                Debug.LogWarning("Câmera principal não encontrada, usando posição padrão");
-                spatialMeshInstance = Instantiate(spatialMeshPrefab, Vector3.zero, Quaternion.identity);
+                renderer.material = spatialMeshMaterial;
             }
-            else
+        }
+
+        // Configurar colliders
+        MeshCollider[] existingColliders = meshObj.GetComponentsInChildren<MeshCollider>();
+
+        // Se não houver colliders ou estiverem todos desabilitados, adicione novos
+        if (existingColliders.Length == 0)
+        {
+            Debug.Log("Nenhum collider encontrado, adicionando novos colliders");
+            MeshFilter[] meshFilters = meshObj.GetComponentsInChildren<MeshFilter>();
+
+            foreach (MeshFilter filter in meshFilters)
             {
-                // Calcular posição à frente da câmera
-                Vector3 cameraPosition = mainCamera.transform.position;
-                Vector3 cameraForward = mainCamera.transform.forward;
-
-                // Posicionar o objeto na direção do olhar da câmera
-                Vector3 objectPosition = cameraPosition + (cameraForward * distanciaDaCamera) + offset;
-
-                // Instanciar o objeto na posição calculada
-                spatialMeshInstance = Instantiate(spatialMeshPrefab, objectPosition, Quaternion.identity);
-
-                Debug.Log("Objeto posicionado na direção do olhar da câmera: " + objectPosition);
+                MeshCollider collider = filter.gameObject.AddComponent<MeshCollider>();
+                collider.sharedMesh = filter.sharedMesh;
+                collider.enabled = enableColliders;
+                collider.convex = false; // Para malhas complexas, deve ser false
+                collider.isTrigger = false; // Importante para colisões físicas
+                Debug.Log($"Adicionado collider ao objeto: {filter.gameObject.name}");
             }
-
-            // Configurar material da malha
-            MeshRenderer[] renderers = spatialMeshInstance.GetComponentsInChildren<MeshRenderer>();
-            foreach (MeshRenderer renderer in renderers)
-            {
-                if (spatialMeshMaterial != null)
-                {
-                    renderer.material = spatialMeshMaterial;
-                }
-            }
-
-            // Adicionar colliders se não existirem
-            MeshFilter[] filters = spatialMeshInstance.GetComponentsInChildren<MeshFilter>();
-            foreach (MeshFilter filter in filters)
-            {
-                if (filter.GetComponent<MeshCollider>() == null)
-                {
-                    MeshCollider collider = filter.gameObject.AddComponent<MeshCollider>();
-                    collider.sharedMesh = filter.sharedMesh;
-                }
-            }
-
-            Debug.Log("Malha espacial carregada do prefab");
         }
         else
         {
-            Debug.LogError("Prefab da malha espacial não atribuído");
+            // Configurar colliders existentes
+            foreach (MeshCollider collider in existingColliders)
+            {
+                collider.enabled = enableColliders;
+                collider.isTrigger = false; // Importante para colisões físicas
+                Debug.Log($"Configurado collider existente: {collider.gameObject.name}, habilitado: {collider.enabled}");
+            }
         }
+
+        // Garantir que todos os objetos têm a layer correta
+        SetLayerRecursively(meshObj, LayerMask.NameToLayer("Default"));
     }
 
-    // Método para alternar entre malha pré-mapeada e em tempo real
-    public void ToggleMeshMode()
+    // Método auxiliar para configurar a layer em todos os objetos filhos
+    void SetLayerRecursively(GameObject obj, int layer)
     {
-        useLiveMesh = !useLiveMesh;
-
-        if (spatialMeshInstance != null)
+        obj.layer = layer;
+        foreach (Transform child in obj.transform)
         {
-            Destroy(spatialMeshInstance);
-        }
-
-        if (spatialAwarenessSystem != null)
-        {
-            // Suspender os observadores
-            var dataProviderAccess = spatialAwarenessSystem as IMixedRealityDataProviderAccess;
-            if (dataProviderAccess != null)
-            {
-                var observers = dataProviderAccess.GetDataProviders<IMixedRealitySpatialAwarenessMeshObserver>();
-                foreach (var observer in observers)
-                {
-                    observer.Suspend();
-                }
-            }
-        }
-
-        if (useLiveMesh)
-        {
-            ConfigureLiveMeshObserver();
-        }
-        else
-        {
-            LoadSpatialMeshFromPrefab();
+            SetLayerRecursively(child.gameObject, layer);
         }
     }
 
-    // Métodos para interagir com a malha espacial
+    // Método adicional para acessar o objeto do mesh espacial de outros scripts
     public GameObject GetSpatialMeshObject()
     {
-        return spatialMeshInstance;
+        return spatialMeshObject;
     }
 
-    public void SetMeshMaterial(Material material)
+    // Este método pode ser chamado de fora para alterar a visibilidade da malha
+    public void SetMeshVisibility(bool isVisible)
     {
-        spatialMeshMaterial = material;
+        displayMesh = isVisible;
 
-        if (spatialMeshInstance != null)
+        if (spatialMeshObject != null)
         {
-            MeshRenderer[] renderers = spatialMeshInstance.GetComponentsInChildren<MeshRenderer>();
+            MeshRenderer[] renderers = spatialMeshObject.GetComponentsInChildren<MeshRenderer>();
             foreach (MeshRenderer renderer in renderers)
             {
-                renderer.material = material;
+                renderer.enabled = displayMesh;
             }
         }
+    }
 
-        // Atualiza também o material no observador de malha, se estiver usando malha ao vivo
-        if (useLiveMesh && spatialAwarenessSystem != null)
+    // Este método pode ser chamado para alterar o material da malha
+    public void SetMeshMaterial(Material newMaterial)
+    {
+        if (newMaterial != null && spatialMeshObject != null)
         {
-            var dataProviderAccess = spatialAwarenessSystem as IMixedRealityDataProviderAccess;
-            if (dataProviderAccess != null)
-            {
-                var observers = dataProviderAccess.GetDataProviders<IMixedRealitySpatialAwarenessMeshObserver>();
+            spatialMeshMaterial = newMaterial;
 
-                foreach (var observer in observers)
-                {
-                    if (observer is BaseSpatialMeshObserver meshObserver)
-                    {
-                        meshObserver.VisibleMaterial = material;
-                    }
-                }
+            MeshRenderer[] renderers = spatialMeshObject.GetComponentsInChildren<MeshRenderer>();
+            foreach (MeshRenderer renderer in renderers)
+            {
+                renderer.material = spatialMeshMaterial;
             }
         }
     }
